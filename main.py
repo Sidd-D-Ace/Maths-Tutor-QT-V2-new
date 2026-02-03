@@ -28,7 +28,7 @@ class RootWindow(QDialog):
         self.setFixedSize(400, 250 if not self.minimal else 150)
         self.init_ui()
         self.load_style("language_dialog.qss")
-        setup_exit_handling(self, require_confirmation=False)
+        self.closeEvent = lambda event: event.accept()
  
     def init_ui(self):
         layout = QVBoxLayout()
@@ -36,8 +36,11 @@ class RootWindow(QDialog):
         if not self.minimal:
             title_label = QLabel("Welcome to Maths Tutor!")
             title_label.setProperty("class", "title")
+            # ✅ ACCESSIBILITY: Make title readable
+            title_label.setAccessibleName("Welcome to Maths Tutor")
             layout.addWidget(title_label)
             layout.addSpacing(15)
+
         language_label = QLabel("Select your preferred language:")
         language_label.setProperty("class", "subtitle")
  
@@ -45,6 +48,11 @@ class RootWindow(QDialog):
         self.language_combo = QComboBox()
         self.language_combo.addItems(languages)
         self.language_combo.setProperty("class", "combo-box")
+        
+        # ✅ ACCESSIBILITY: Link label to combo box (Screen reader says "Select language: English")
+        language_label.setBuddy(self.language_combo)
+        self.language_combo.setAccessibleName("Language Selection")
+        
         layout.addWidget(language_label)
         layout.addWidget(self.language_combo)
 
@@ -129,8 +137,13 @@ class MainWindow(QMainWindow):
 
         from language import language
         language.selected_language=self.language
-        self.init_ui()
+
+        
         setup_exit_handling(self, require_confirmation=True)
+        self.init_ui()
+        # 2. Add Ctrl+Q shortcut to Quit the App (Optional)
+        self.quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.quit_shortcut.activated.connect(QApplication.quit)
 
         self.tts = TextToSpeech()
         self.load_style("main_window.qss")
@@ -145,6 +158,30 @@ class MainWindow(QMainWindow):
         #self.player = self.setup_background_music()
 
         self.difficulty_index = 1 # Default to level 0 (e.g., "Very Easy")P
+
+    # Add this inside class MainWindow in main.py
+    def refresh_ui(self, new_language):
+        """
+        Rebuilds the entire UI with the new language WITHOUT closing the window.
+        """
+        print(f"[System] Refreshing UI to {new_language}...")
+        
+        # 1. Update the language variable
+        self.language = new_language
+        self.setWindowTitle(f"Maths Tutor - {self.language}")
+
+        # 2. Stop any active components from the OLD UI
+        if hasattr(self, 'tts'):
+            self.tts.stop()
+        
+        # 3. Re-run init_ui
+        # This creates a brand new Central Widget. 
+        # When we set it, PyQt automatically destroys the OLD central widget (and all its children).
+        self.init_ui()
+        
+        # 4. Re-apply the current theme to the new widgets
+        from pages.shared_ui import apply_theme
+        apply_theme(self.central_widget, self.current_theme)
 
     def init_ui(self):
         self.central_widget = QWidget()
@@ -288,6 +325,9 @@ class MainWindow(QMainWindow):
         label = QLabel("Choose Mode")
         label.setAlignment(Qt.AlignCenter)
         label.setProperty("class", "main-title")
+        
+        # ✅ ACCESSIBILITY: Ensure this header is read when navigating
+        label.setAccessibleName("Choose Mode Menu")
         layout.addWidget(label)
 
         buttons = [
@@ -297,10 +337,16 @@ class MainWindow(QMainWindow):
         ]
         for text, callback in buttons:
             btn = QPushButton(text)
-            btn.setMinimumSize(240, 65)  # ✅ Uniform large size for all mode buttons
-            btn.setProperty("class", "menu-button")  # ✅ Set QSS class for each button
+            btn.setMinimumSize(240, 65)
+            btn.setProperty("class", "menu-button")
             btn.setProperty("theme", self.current_theme)
             btn.clicked.connect(callback)
+            
+            # ✅ ACCESSIBILITY: Clean up text for readers (remove emojis if they sound weird)
+            clean_text = text.replace("⚡", "").replace("🎮", "").replace("🎓", "").strip()
+            btn.setAccessibleName(clean_text)
+            btn.setAccessibleDescription(f"Start {clean_text}")
+            
             layout.addWidget(btn)
             
             if "Quickplay" in text:
@@ -428,6 +474,9 @@ class MainWindow(QMainWindow):
             self.media_player.play()
         else:
             print(f"[SOUND ERROR] File not found: {filepath}")
+    
+    # In main.py -> MainWindow class
+
     def play_background_music(self):
         if self.is_muted:
             print("[BG MUSIC] Muted.")
@@ -436,12 +485,16 @@ class MainWindow(QMainWindow):
         filepath = os.path.abspath(os.path.join("sounds", "backgroundmusic.mp3"))
         if os.path.exists(filepath):
             self.bg_player.setMedia(QMediaContent(QUrl.fromLocalFile(filepath)))
-            self.bg_player.setVolume(30)
+            
+            # ✅ REDUCED VOLUME: Set to 10 (Was 30)
+            self.bg_player.setVolume(10)
+            
             self.bg_player.play()
             self.bg_player.mediaStatusChanged.connect(self.loop_background_music)
             print("[BG MUSIC] Playing background music.")
         else:
             print("[BG MUSIC ERROR] File not found:", filepath)
+
     def loop_background_music(self, status):
         if status == QMediaPlayer.EndOfMedia:
             self.bg_player.setPosition(0)
@@ -465,6 +518,7 @@ class MainWindow(QMainWindow):
                 print("[BG MUSIC] Paused due to mute.")
             else:
                 self.play_background_music()
+
     def toggle_audio(self):
         new_state = not self.is_muted
         self.set_mute(new_state)
@@ -474,7 +528,7 @@ class MainWindow(QMainWindow):
 
       
     def create_buttons(self):
-        button_grid = QGridLayout()
+        button_grid = QGridLayout() 
         button_grid.setSpacing(12)
         button_grid.setContentsMargins(6, 6, 6, 6)
 
@@ -653,27 +707,6 @@ class MainWindow(QMainWindow):
         apply_theme(self.central_widget, self.current_theme)
         #self.tts.speak(f"{self.current_theme.capitalize()} theme activated")
 
-    def closeEvent(self, event):
-        reply = QMessageBox.question(
-            self,
-            "Exit Application",
-            "Are you sure you want to exit?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            # Stop any activity in the current widget
-            current_page = self.stack.currentWidget()
-            if current_page:
-                question_widget = current_page.findChild(QuestionWidget)
-                if question_widget:
-                    question_widget.stop_all_activity()
-            
-            if hasattr(self, 'tts'):
-                self.tts.cleanup()
-            event.accept()
-        else:
-            event.ignore()
 
     def update_back_to_operations_visibility(self, section_name):
         operation_subsections = {

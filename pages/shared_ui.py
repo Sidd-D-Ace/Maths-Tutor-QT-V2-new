@@ -176,8 +176,12 @@ def create_answer_input(width=300, height=40, font_size=14) -> QLineEdit:
     input_box.setAlignment(Qt.AlignCenter)
     input_box.setPlaceholderText(tr("Enter your answer"))
     input_box.setFont(QFont("Arial", font_size))
-    input_box.setValidator(QIntValidator(0, 1000000))  # only positive integers
+    input_box.setValidator(QIntValidator(0, 1000000)) 
     input_box.setProperty("class", "answer-input")
+    
+    # ✅ ACCESSIBILITY: Default name
+    input_box.setAccessibleName(tr("Answer input"))
+    input_box.setAccessibleDescription(tr("Type your answer as a number and press Enter."))
     return input_box
 
 def wrap_center(widget):
@@ -189,38 +193,55 @@ def wrap_center(widget):
     container.setLayout(layout)
     return container
 
-def setup_exit_handling(window, require_confirmation=True):
-    """Attach Ctrl+Q shortcut and optional confirmation to any window."""
+# In pages/shared_ui.py
 
-    exit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), window)
-    exit_shortcut.setContext(Qt.ApplicationShortcut)
-    exit_shortcut.activated.connect(lambda: confirm_exit(window, require_confirmation))
+# In pages/shared_ui.py
+# In pages/shared_ui.py
 
-    def custom_close_event(event):
-        if not confirm_exit(window, require_confirmation):
-            event.ignore()
+def setup_exit_handling(window, require_confirmation=False):
+    """
+    Configures exit behavior.
+    - Ctrl+Q: Quits the Application (asks for confirmation if enabled).
+    - Window Close (X): Closes the window (asks for confirmation if enabled).
+    """
+
+    # 1. Define the Exit Logic
+    def check_and_close(event=None):
+        if require_confirmation:
+            reply = QMessageBox.question(window, "Exit Application", "Are you sure you want to exit?",
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                if event: event.accept()
+                else: QApplication.quit()
+            else:
+                if event: event.ignore()
         else:
-            event.accept()
-    window.closeEvent = custom_close_event
+            # No confirmation needed
+            if event: event.accept()
+            else: QApplication.quit()
+
+    # 2. Handle Ctrl+Q (Quit App)
+    if hasattr(window, "quit_shortcut"): 
+        # Remove old shortcut if it exists to avoid duplicates
+        window.quit_shortcut.setParent(None)
+        
+    window.quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), window)
+    window.quit_shortcut.setContext(Qt.ApplicationShortcut)
+    window.quit_shortcut.activated.connect(lambda: check_and_close(event=None))
+
+    # 3. Handle X Button (Close Window)
+    window.closeEvent = check_and_close
 
 
-def confirm_exit(window, require_confirmation=True):
-    if not require_confirmation:
-        QApplication.quit()
-        return True
+# In pages/shared_ui.py
 
-    reply = QMessageBox.question(
-        window,
-        "Exit Application",
-        "Are you sure you want to exit?",
-        QMessageBox.Yes | QMessageBox.No,
-        QMessageBox.No
-    )
-    if reply == QMessageBox.Yes:
-        QApplication.quit()
-        return True
-    return False
+# In pages/shared_ui.py
 
+# In pages/shared_ui.py
+
+# In pages/shared_ui.py
+
+# In pages/shared_ui.py
 
 class QuestionWidget(QWidget):
     def __init__(self, processor, window=None, next_question_callback=None, tts=None):
@@ -255,16 +276,20 @@ class QuestionWidget(QWidget):
         question_layout.addWidget(self.label)
         question_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
-        # ✅ Styled input box (your own function)
+        # ✅ Styled input box
+        # We modify the creation slightly to avoid conflicting placeholders
         self.input_box = create_answer_input()
+        
+        # FIX: Remove visual placeholder to stop "double reading" (Label + Placeholder)
+        self.input_box.setPlaceholderText("") 
+        
         self.input_box.returnPressed.connect(self.check_answer)
 
         self.result_label = QLabel("")
         self.result_label.setAlignment(Qt.AlignCenter)
-        
         self.result_label.setFont(QFont("Arial", 46))
 
-        #🧱 Assemble the main layout
+        # Assemble layout
         self.layout.addWidget(self.question_area)
         self.layout.addSpacing(20)
         self.layout.addWidget(self.input_box, alignment=Qt.AlignCenter)
@@ -273,70 +298,45 @@ class QuestionWidget(QWidget):
         self.layout.addStretch()
 
         self.gif_feedback_label = QLabel()
-        self.gif_feedback_label.setVisible(False)  # Hidden by default
-        self.processor.widget = self
-        # Make sure your widget has a layout
-        #layout = self.layout
-        #if layout is None:
-         #   layout = QVBoxLayout()
-          #  self.setLayout(layout)
-
-        #layout.addWidget(self.gif_feedback_label, alignment=Qt.AlignCenter)
-        self.gif_feedback_label = QLabel()
         self.gif_feedback_label.setVisible(False)
         self.gif_feedback_label.setAlignment(Qt.AlignCenter)
         self.gif_feedback_label.setScaledContents(True)
         self.gif_feedback_label.setMinimumSize(300, 300)
         self.gif_feedback_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        
 
-        # Add the GIF label to your layout (ideally after the question/answer widgets)
         self.layout.addWidget(self.gif_feedback_label, alignment=Qt.AlignCenter)
 
-
-
         self.load_new_question()
-        
+
     def show_feedback_gif(self, sound_filename):
-        
         if sound_filename == "question":
-            print("[GIF] Question gif")
             gif_name = f"question-{random.choice([1, 2])}.gif"
         else:  
             gif_name = sound_filename.replace(".mp3", ".gif")
         gif_path = f"images/{gif_name}"
 
         movie = QMovie(gif_path)
-
-        # Set a fixed size to scale the gif
-        movie.setScaledSize(QSize(200, 200))  # Adjust this as needed
-
+        movie.setScaledSize(QSize(200, 200))
         self.gif_feedback_label.setFixedSize(200, 200)
         self.gif_feedback_label.setAlignment(Qt.AlignCenter)
         self.gif_feedback_label.setMovie(movie)
         self.gif_feedback_label.setVisible(True)
         movie.start()
-
-
             
     def hide_feedback_gif(self):
         self.gif_feedback_label.setVisible(False)
         self.gif_feedback_label.clear()
 
     def end_session(self):
-        #if hasattr(self, 'bg_player') and self.bg_player is not None:
-    
         self.main_window.bg_player.stop()   
-        print("[BG MUSIC] Stopped due to end session.")
         if self.main_window:
-            from main import MainWindow  # Import your section menu window
             self.main_window.back_to_main_menu()
 
-
-
-    
     def set_input_focus(self):
-        self.input_box.setFocus()
+        # FIX: Only set focus if we actually LOST it.
+        # Forcing focus on an already focused element causes screen readers to re-announce.
+        if not self.input_box.hasFocus():
+            self.input_box.setFocus()
 
     def load_new_question(self):
         if hasattr(self, "gif_feedback_label"):
@@ -345,14 +345,52 @@ class QuestionWidget(QWidget):
         question_text, self.answer = self.processor.get_questions()
         self.start_time = time()
 
-        # Show question text
+        # Update Visuals
         self.label.setText(question_text)
+        
+        # Clearing text usually triggers a "Blank" or "Empty" announcement, which is fine.
+        # We just want to avoid the full label being read again.
         self.input_box.setText("")
         self.result_label.setText("")
         self.show_feedback_gif("question")
-        QTimer.singleShot(100, self.set_input_focus)
+        
+        # --- PREVENT REPETITION & DELAY TTS START ---
+        app_tts_active = False
+        if self.main_window and not self.main_window.is_muted:
+            app_tts_active = True
+        
+        if self.processor.questionType.lower() == "bellring":
+            app_tts_active = False
 
-        # 🔹 Special case: Bellring → play bells instead of reading numbers
+        if app_tts_active:
+            # OPTION A: TTS IS ON
+            # Screen Reader should just see "Answer".
+            desired_name = tr("Answer")
+            
+            # FIX: STRICT CHECK. Do not touch property if it is already correct.
+            if self.input_box.accessibleName() != desired_name:
+                self.input_box.setAccessibleName(desired_name)
+                self.input_box.setAccessibleDescription("") 
+
+            # ✅ DELAY: 2.5 seconds
+            if hasattr(self, 'tts'):
+                QTimer.singleShot(2500, lambda: self.tts.speak(question_text))
+        else:
+            # OPTION B: TTS IS OFF
+            # We must update the name to include the question.
+            new_acc_name = f"{tr('Question')}: {question_text}. {tr('Answer')}"
+            
+            # This will always be different, so we update it.
+            self.input_box.setAccessibleName(new_acc_name)
+            self.input_box.setAccessibleDescription("")
+
+        # FIX: Do not blindly call set_input_focus() with a timer.
+        # Only call it if we suspect we aren't focused.
+        if not self.input_box.hasFocus():
+            QTimer.singleShot(100, self.set_input_focus)
+        # --- END ---
+
+        # Handle Bellring Logic
         if self.processor.questionType.lower() == "bellring":
             try:
                 count = int(float(self.answer))
@@ -360,37 +398,28 @@ class QuestionWidget(QWidget):
                     self.play_bell_sounds(count)
             except Exception as e:
                 print("[Bellring ERROR]", e)
-        else:
-            if hasattr(self, 'tts'):
-                self.tts.speak(question_text)
-
 
    
     def play_bell_sounds(self, count):
-        """Play the bell sound 'count' times with a timer delay."""
         if not hasattr(self, "bell_timer"):
             self.bell_timer = QTimer(self)
             self.bell_timer.timeout.connect(self.do_ring)
-
         self.current_ring = 0
         self.total_rings = count
-        self.bell_timer.start(700)  # 🔔 ring every 700 ms
+        self.bell_timer.start(700)
 
     def stop_all_activity(self):
-        """Stops all running timers and activities in the widget."""
         if hasattr(self, "bell_timer") and self.bell_timer.isActive():
             self.bell_timer.stop()
-            print("[BELL] Bell timer stopped.")
 
     def do_ring(self):
         if self.current_ring < self.total_rings:
-            QSound.play("sounds/click-button.wav")  # ensure correct relative path
+            QSound.play("sounds/click-button.wav")
             self.current_ring += 1
         else:
             self.bell_timer.stop()
 
 
-   
     def check_answer(self):
         try:
             user_input = self.input_box.text().strip()
@@ -400,69 +429,64 @@ class QuestionWidget(QWidget):
             correct = float(user_answer) == float(self.answer)
             self.processor.submit_answer(user_answer, self.answer, elapsed)
 
+            app_audio_active = False
+            if self.main_window and not self.main_window.is_muted:
+                app_audio_active = True
+
             if correct:
-                if hasattr(self, 'tts'):
-                    self.tts.stop()
-                #self.result_label.setMinimumHeight(200)
+                if hasattr(self, 'tts'): self.tts.stop()
+
+                # Visual Feedback
                 self.result_label.setText('<span style="font-size:16pt;">Correct!</span>')
-
-
-
-               
-                sound_index = random.randint(1, 3)
                 
-                if elapsed < 5:
-                    feedback_text = "🌟 Excellent"
-                    if self.main_window and callable(getattr(self.main_window, "play_sound", None)):
-                        sound_file = f"excellent-{sound_index}.mp3"
-                        
-                elif elapsed < 10:
-                    if self.main_window:
-                        feedback_text = "👏 Very Good"
-                        sound_file =f"very-good-{sound_index}.mp3"
-                elif elapsed < 15:
-                    if self.main_window:
-                        feedback_text = "👍 Good"
-                        sound_file =f"good-{sound_index}.mp3"
-                elif elapsed < 20:
-                    if self.main_window:
-                        feedback_text = "👌 Not Bad"
-                        sound_file =f"not-bad-{sound_index}.mp3"
-                else:
-                    if self.main_window:
-                        feedback_text = "🙂 Okay"
-                        sound_file =f"okay-{sound_index}.mp3"
-
+                # Feedback Sound
+                sound_index = random.randint(1, 3)
+                if elapsed < 5: feedback_text = "🌟 Excellent"
+                elif elapsed < 10: feedback_text = "👏 Very Good"
+                elif elapsed < 15: feedback_text = "👍 Good"
+                elif elapsed < 20: feedback_text = "👌 Not Bad"
+                else: feedback_text = "🙂 Okay"
+                
                 self.result_label.setText(f'<span style="font-size:16pt;">{feedback_text}</span>')
-                self.main_window.play_sound(sound_file)
-                self.show_feedback_gif(sound_file)
-                  # ✅ Show the GIF
-                self.processor.retry_count = 0
+                
+                if app_audio_active:
+                    if self.main_window:
+                        sound_file = f"excellent-{sound_index}.mp3" 
+                        if elapsed < 5: sound_file = f"excellent-{sound_index}.mp3"
+                        elif elapsed < 10: sound_file =f"very-good-{sound_index}.mp3"
+                        elif elapsed < 15: sound_file =f"good-{sound_index}.mp3"
+                        elif elapsed < 20: sound_file =f"not-bad-{sound_index}.mp3"
+                        else: sound_file =f"okay-{sound_index}.mp3"
 
-                #
-                # QTimer.singleShot(2000, lambda: self.show_feedback_gif("question-1.mp3"))
+                        self.main_window.play_sound(sound_file)
+                        self.show_feedback_gif(sound_file)
+
+                # Focus remains on Input Box. Screen reader says nothing extra.
+                # Audio plays "Excellent".
+
+                self.processor.retry_count = 0
                 QTimer.singleShot(2000, self.call_next_question)
 
-
             else:
-               
                 self.processor.retry_count += 1
-                sound_index = random.randint(1, 2)
-                if self.processor.retry_count == 1:
-                    sound_file = f"wrong-anwser-{sound_index}.mp3"
-                else:
-                    sound_file = f"wrong-anwser-repeted-{sound_index}.mp3"
-
-                self.main_window.play_sound(sound_file)
-                self.show_feedback_gif(sound_file)
-
-                
                 self.result_label.setText('<span style="font-size:16pt;">Try Again.</span>')
-               
 
+                if app_audio_active:
+                    sound_index = random.randint(1, 2)
+                    if self.processor.retry_count == 1: sound_file = f"wrong-anwser-{sound_index}.mp3"
+                    else: sound_file = f"wrong-anwser-repeted-{sound_index}.mp3"
+                    
+                    self.main_window.play_sound(sound_file)
+                    self.show_feedback_gif(sound_file)
+
+                # Focus remains on Input Box.
+                # Just ensure input is active for typing
+                if not self.input_box.hasFocus():
+                    self.input_box.setFocus()
 
         except Exception as e:
             self.result_label.setText(f"Error: {str(e)}")
+            self.result_label.setAccessibleName(f"Error: {str(e)}")
 
     def call_next_question(self):
         if hasattr(self, "next_question_callback") and self.next_question_callback:
@@ -594,34 +618,37 @@ class SettingsDialog(QDialog):
          f"Currently selected difficulty is {level}"
          )   
         
+    # In pages/shared_ui.py
+    # In pages/shared_ui.py -> SettingsDialog class
     def handle_reset_language(self):
-        from main import RootWindow, MainWindow  # Dynamically import to avoid circular imports
-        
+        print("--- [DEBUG] handle_reset_language START ---")
+        from main import RootWindow 
+        from language.language import clear_remember_language, set_language
 
-        
         clear_remember_language()
-        # Open language selection dialog (in minimal mode)
+        
         dialog = RootWindow(minimal=True)
         if dialog.exec_() == QDialog.Accepted:
-            # Get selected language
             new_lang = dialog.language_combo.currentText()
-
-            # Update global and local language state
+            print(f"--- [DEBUG] Dialog Accepted. New Language: {new_lang}")
+            
             set_language(new_lang)
             self.updated_language = new_lang
 
-            # Show confirmation
             QMessageBox.information(self, "Language Changed",
-                                    f"Language changed to {new_lang}. The app will now reload to apply changes.")
-            print( "changed language",new_lang)
-            # Restart main window with new language
+                                    f"Language changed to {new_lang}. The app will now reload.")
+            print("--- [DEBUG] Info box closed. Ready to refresh.")
+
             if self.main_window:
-                self.main_window.close()  # Close existing window
-                self.main_window = MainWindow(language=new_lang)
-                self.main_window.show()
+                print("--- [DEBUG] Calling main_window.refresh_ui()...")
+                self.main_window.refresh_ui(new_lang)
+                print("--- [DEBUG] Returned from refresh_ui().")
+            else:
+                print("--- [DEBUG] ERROR: self.main_window is None!")
 
-            self.close()  # Close settings dialog
-
+            print("--- [DEBUG] Closing Settings Dialog...")
+            self.close() 
+            print("--- [DEBUG] Settings Dialog Closed.")
 
     def accept_settings(self):
         selected_index = self.difficulty_slider.value()
